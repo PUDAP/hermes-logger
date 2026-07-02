@@ -7,8 +7,10 @@ writes structured points to InfluxDB for every user prompt, LLM API request
 
 Registration
 ------------
-Place this directory on your HERMES_PLUGINS_PATH (or equivalent) and ensure
-a .env file is present (see .env.example) before starting the agent.
+Drop this directory into ~/.hermes/plugins/ and ensure a .env file is present
+(see .env.example) before starting the agent.  Enable the plugin with:
+
+    hermes plugins enable hermes-logger
 
 Measurements written
 --------------------
@@ -38,7 +40,7 @@ _writer = None
 def _get_writer():
     global _writer
     if _writer is None:
-        from influx_writer import InfluxWriter
+        from .influx_writer import InfluxWriter
         _writer = InfluxWriter()
     return _writer
 

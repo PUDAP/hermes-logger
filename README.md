@@ -47,15 +47,16 @@ Optional tuning variables:
 | `HERMES_LOGGER_MAX_TEXT_BYTES` | `8192` | Truncate text fields longer than this (0 = unlimited) |
 | `HERMES_LOGGER_LOG_LEVEL` | `INFO` | Plugin log verbosity |
 
-### 3. Register the plugin with Hermes
+### 3. Install the plugin
 
-Add the path to this directory to your Hermes plugin path configuration (exact mechanism depends on your Hermes version — typically `HERMES_PLUGINS_PATH` or the `plugins` key in `hermes.yaml`):
+Drop (or symlink) this directory into your Hermes user plugins folder and enable it:
 
 ```bash
-export HERMES_PLUGINS_PATH=/path/to/hermes-logger
+ln -s /path/to/hermes-logger ~/.hermes/plugins/hermes-logger
+hermes plugins enable hermes-logger
 ```
 
-The plugin's `register(ctx)` entry point will be called automatically at agent start.  If any required env var is missing, the plugin logs a warning and skips registration so the agent still starts normally.
+Hermes discovers the `plugin.yaml` manifest and calls `register(ctx)` from `__init__.py` at agent start.  If any required env var is missing the plugin logs a warning and skips registration so the agent still starts normally.
 
 ## InfluxDB schema overview
 

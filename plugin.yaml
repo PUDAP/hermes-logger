@@ -1,0 +1,8 @@
+name: hermes-logger
+version: "0.1.0"
+description: Observer plugin — writes Hermes telemetry (sessions, LLM turns, API requests, tool calls, subagents) to InfluxDB.
+requires_env:
+  - INFLUXDB_URL
+  - INFLUXDB_TOKEN
+  - INFLUXDB_ORG
+  - INFLUXDB_BUCKET
