@@ -9,7 +9,7 @@ import json
 import logging
 import os
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, cast
 
 from dotenv import load_dotenv
 from influxdb_client import InfluxDBClient, WriteOptions
@@ -91,7 +91,7 @@ class InfluxWriter:
                 bucket=self.bucket,
                 org=self.org,
                 record=record,
-                write_precision=WritePrecision.NANOSECONDS,
+                write_precision=cast(WritePrecision, WritePrecision.NS),
             )
         except Exception:
             logger.exception("Failed to write InfluxDB point: %s", record)
