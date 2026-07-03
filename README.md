@@ -35,9 +35,9 @@ Required variables:
 | Variable | Description |
 |---|---|
 | `INFLUXDB_URL` | HTTP(S) address of your InfluxDB instance, e.g. `http://192.168.1.100:8086` |
-| `INFLUXDB_TOKEN` | InfluxDB API token with write access to the target bucket |
+| `INFLUXDB_TOKEN` | InfluxDB API token with write access to the target database |
 | `INFLUXDB_ORG` | InfluxDB organization name |
-| `INFLUXDB_BUCKET` | Destination bucket, e.g. `hermes-logs` |
+| `INFLUXDB_DATABASE` | Destination database, e.g. `hermes-logs` |
 
 Optional tuning variables:
 

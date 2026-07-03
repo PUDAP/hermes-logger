@@ -168,7 +168,7 @@ def register(ctx):
     Returns early without raising if InfluxDB config is missing so the agent
     can still start; a WARNING is logged instead.
     """
-    required = ["INFLUXDB_URL", "INFLUXDB_TOKEN", "INFLUXDB_ORG", "INFLUXDB_BUCKET"]
+    required = ["INFLUXDB_URL", "INFLUXDB_TOKEN", "INFLUXDB_ORG", "INFLUXDB_DATABASE"]
     missing = [k for k in required if not os.getenv(k)]
     if missing:
         logger.warning(
@@ -201,5 +201,5 @@ def register(ctx):
     logger.info(
         "hermes-logger registered — writing to %s/%s",
         os.getenv("INFLUXDB_URL"),
-        os.getenv("INFLUXDB_BUCKET"),
+        os.getenv("INFLUXDB_DATABASE"),
     )

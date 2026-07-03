@@ -67,7 +67,7 @@ class InfluxWriter:
         url = os.environ["INFLUXDB_URL"]
         token = os.environ["INFLUXDB_TOKEN"]
         self.org = os.environ["INFLUXDB_ORG"]
-        self.bucket = os.environ["INFLUXDB_BUCKET"]
+        self.database = os.environ["INFLUXDB_DATABASE"]
 
         batch_size = int(os.getenv("INFLUXDB_BATCH_SIZE", "500"))
         flush_interval = int(os.getenv("INFLUXDB_FLUSH_INTERVAL_MS", "10000"))
@@ -80,7 +80,7 @@ class InfluxWriter:
                 write_type=ASYNCHRONOUS,
             )
         )
-        logger.info("InfluxWriter connected to %s (bucket=%s)", url, self.bucket)
+        logger.info("InfluxWriter connected to %s (database=%s)", url, self.database)
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -89,7 +89,7 @@ class InfluxWriter:
     def _write(self, record: dict) -> None:
         try:
             self._write_api.write(
-                bucket=self.bucket,
+                bucket=self.database,
                 org=self.org,
                 record=record,
                 write_precision=cast(WritePrecision, WritePrecision.NS),
