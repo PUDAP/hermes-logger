@@ -30,7 +30,7 @@ cp .env.example .env
 $EDITOR .env
 ```
 
-Required variables:
+Required variables (registration is skipped with a warning if any are missing):
 
 | Variable | Description |
 |---|---|
@@ -43,6 +43,7 @@ Optional tuning variables:
 
 | Variable | Default | Description |
 |---|---|---|
+| `AGENT_ID` | _(unset)_ | Identifier for the machine/agent running this plugin; added as the `agent_id` tag on every measurement when set |
 | `INFLUXDB_BATCH_SIZE` | `500` | Points buffered before a forced flush |
 | `INFLUXDB_FLUSH_INTERVAL_MS` | `10000` | Maximum ms between automatic flushes |
 | `HERMES_LOGGER_MAX_TEXT_BYTES` | `8192` | Truncate text fields longer than this (0 = unlimited) |
@@ -50,10 +51,19 @@ Optional tuning variables:
 
 ### 3. Install the plugin
 
-Drop (or symlink) this directory into your Hermes user plugins folder and enable it:
+This repo is meant to live directly under your Hermes user plugins folder. Either clone it straight into place, or symlink it in if you keep the checkout elsewhere:
 
 ```bash
+# Option A: clone directly into place
+git clone https://github.com/pudap/hermes-logger ~/.hermes/plugins/hermes-logger
+
+# Option B: symlink an existing checkout
 ln -s /path/to/hermes-logger ~/.hermes/plugins/hermes-logger
+```
+
+Then enable it:
+
+```bash
 hermes plugins enable hermes-logger
 ```
 
