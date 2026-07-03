@@ -21,7 +21,7 @@ load_dotenv()
 logger = logging.getLogger("hermes_logger.influx_writer")
 
 _MAX_TEXT_BYTES = int(os.getenv("HERMES_LOGGER_MAX_TEXT_BYTES", "8192"))
-_AGENT_ID = os.getenv("AGENT_ID", "")
+_AGENT_ID = os.getenv("AGENT_ID", "unset")
 
 
 def _truncate(text: str | None) -> str:
