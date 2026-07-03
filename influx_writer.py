@@ -21,6 +21,7 @@ load_dotenv()
 logger = logging.getLogger("hermes_logger.influx_writer")
 
 _MAX_TEXT_BYTES = int(os.getenv("HERMES_LOGGER_MAX_TEXT_BYTES", "8192"))
+_AGENT_ID = os.getenv("AGENT_ID", "")
 
 
 def _truncate(text: str | None) -> str:
@@ -107,11 +108,13 @@ class InfluxWriter:
         }
 
     def _emit(self, measurement: str, tags: dict, fields: dict, ts_ns: int, kw: dict) -> None:
-        """Build and write a point, tagging it with the observer schema version."""
+        """Build and write a point, tagging it with the observer schema version and agent id."""
         tags = dict(tags)
         schema_version = kw.get("telemetry_schema_version")
         if schema_version:
             tags["telemetry_schema_version"] = schema_version
+        if _AGENT_ID:
+            tags["agent_id"] = _AGENT_ID
         self._write(self._point(measurement, tags, fields, ts_ns))
 
     # ------------------------------------------------------------------
