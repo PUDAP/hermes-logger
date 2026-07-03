@@ -6,13 +6,14 @@ A [Hermes observer plugin](https://github.com/NousResearch/hermes-agent/tree/mai
 
 | Measurement | What it captures |
 |---|---|
-| `hermes_session` | Session start / end lifecycle |
+| `hermes_session` | Session start / end / reset lifecycle |
 | `hermes_llm_turn` | Per-turn **user prompt** (`turn_start`) and **final agent response** (`turn_end`) |
 | `hermes_api_request` | Individual provider API attempts — timing, token usage, sanitized **request & response payloads** (LLM reasoning context) |
 | `hermes_tool_call` | Tool call start / end — name, **args**, **result**, duration, status |
 | `hermes_subagent` | Delegated child-agent start / stop with goal and summary |
+| `hermes_approval` | Dangerous-command approval requests and the user's response |
 
-All measurements share common tag fields: `session_id`, `turn_id`, and where applicable `model`, `provider`, `tool_name`, and `status`.
+All measurements share common tag fields where applicable: `session_id`, `task_id`, `turn_id`, `model`, `provider`, `tool_name`, `status`. Every point is also tagged with `telemetry_schema_version` whenever Hermes supplies one (currently `hermes.observer.v1`).
 
 ## Setup
 
@@ -60,31 +61,115 @@ Hermes discovers the `plugin.yaml` manifest and calls `register(ctx)` from `__in
 
 ## InfluxDB schema overview
 
-### `hermes_llm_turn`
+Every point additionally carries a `telemetry_schema_version` tag when Hermes supplies one (see `InfluxWriter._emit`). It is omitted below for brevity.
+
+### `hermes_session`
+
+Written by `write_session_start` / `write_session_end` / `write_session_reset`.
 
 ```
-tags:  session_id, turn_id, model, platform, is_first_turn
-fields (turn_start): event="turn_start", user_message, history_length
-fields (turn_end):   event="turn_end",   user_message, assistant_response, history_length
+event="start" (on_session_start)
+  tags:   session_id
+  fields: platform, model
+
+event="end" (on_session_end)
+  tags:   session_id, completed, interrupted
+  fields: reason
+
+event="reset" (on_session_reset)
+  tags:   old_session_id, new_session_id
+  fields: reason
+```
+
+### `hermes_llm_turn`
+
+Written by `write_llm_turn_start` (`pre_llm_call`) / `write_llm_turn_end` (`post_llm_call`).
+
+```
+event="turn_start"
+  tags:   session_id, turn_id, model, platform, is_first_turn, sender_id
+  fields: user_message, history_length
+
+event="turn_end"
+  tags:   session_id, turn_id, model, platform
+  fields: user_message, assistant_response, history_length
 ```
 
 ### `hermes_api_request`
 
+Written by `write_api_request_start` (`pre_api_request`) / `write_api_request_end` (`post_api_request`) / `write_api_request_error` (`api_request_error`).
+
 ```
-tags:  session_id, turn_id, api_request_id, model, provider, finish_reason / status_code
-fields (api_start): event, api_call_count, message_count, approx_input_tokens, request_payload
-fields (api_end):   event, api_duration_ms, prompt_tokens, completion_tokens, total_tokens,
-                    assistant_content_chars, assistant_tool_call_count, response_payload
-fields (api_error): event, api_duration_ms, retry_count, error_type, error_message
+event="api_start"
+  tags:   session_id, task_id, turn_id, api_request_id, model, provider, platform,
+          api_mode, base_url
+  fields: api_call_count, message_count, tool_count, approx_input_tokens,
+          request_char_count, max_tokens, request_payload
+
+event="api_end"
+  tags:   session_id, task_id, turn_id, api_request_id, model, provider, platform,
+          api_mode, base_url, finish_reason
+  fields: api_duration_ms, message_count, response_model, prompt_tokens,
+          completion_tokens, total_tokens, usage_payload, assistant_content_chars,
+          assistant_tool_call_count, response_payload
+
+event="api_error"
+  tags:   session_id, task_id, turn_id, api_request_id, model, provider, platform,
+          api_mode, base_url, status_code, retryable
+  fields: api_duration_ms, retry_count, max_retries, reason, error_type,
+          error_message, request_payload
 ```
+
+`request_payload` / `response_payload` are the sanitized JSON payloads Hermes builds for the provider request/response (includes reasoning/thinking blocks). `usage_payload` is the full raw `usage` object as JSON, in addition to the three normalized numeric token fields.
 
 ### `hermes_tool_call`
 
+Written by `write_tool_start` (`pre_tool_call`) / `write_tool_end` (`post_tool_call`).
+
 ```
-tags:  session_id, turn_id, tool_call_id, tool_name, status, error_type
-fields (tool_start): event="tool_start", args
-fields (tool_end):   event="tool_end",   duration_ms, result, error_message
+event="tool_start"
+  tags:   session_id, task_id, turn_id, tool_call_id, tool_name, api_request_id
+  fields: args
+
+event="tool_end"
+  tags:   session_id, task_id, turn_id, tool_call_id, tool_name, api_request_id,
+          status, error_type
+  fields: duration_ms, result, error_message
 ```
+
+`status` is the observer-grade lifecycle outcome: `ok`, `error`, `blocked`, or `cancelled`.
+
+### `hermes_subagent`
+
+Written by `write_subagent_start` (`subagent_start`) / `write_subagent_stop` (`subagent_stop`).
+
+```
+event="subagent_start"
+  tags:   parent_session_id, parent_subagent_id, child_session_id,
+          child_subagent_id, child_role
+  fields: parent_turn_id, child_goal
+
+event="subagent_stop"
+  tags:   parent_session_id, parent_subagent_id, child_session_id,
+          child_subagent_id, child_role, status
+  fields: duration_ms, child_summary
+```
+
+### `hermes_approval`
+
+Written by `write_approval_request` (`pre_approval_request`) / `write_approval_response` (`post_approval_response`).
+
+```
+event="approval_request"
+  tags:   session_id, task_id, turn_id, session_key, surface, pattern_key
+  fields: command, description, pattern_keys
+
+event="approval_response"
+  tags:   session_id, task_id, turn_id, session_key, surface, pattern_key, choice
+  fields: command, description, pattern_keys
+```
+
+`choice` reflects how the user resolved the prompt: `once`, `session`, `always`, `deny`, or `timeout`.
 
 ## Querying examples (Flux)
 
@@ -119,4 +204,20 @@ from(bucket: "hermes-logs")
   |> range(start: -1h)
   |> filter(fn: (r) => r._measurement == "hermes_tool_call" and r.status == "error")
   |> keep(columns: ["_time", "tool_name", "error_type", "session_id"])
+```
+
+**Denied or timed-out approvals:**
+```flux
+from(bucket: "hermes-logs")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "hermes_approval" and (r.choice == "deny" or r.choice == "timeout"))
+  |> keep(columns: ["_time", "session_id", "choice", "pattern_key"])
+```
+
+**Subagent tree for a parent session:**
+```flux
+from(bucket: "hermes-logs")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "hermes_subagent" and r.parent_session_id == "<session_id>")
+  |> keep(columns: ["_time", "event", "child_session_id", "child_role", "child_subagent_id"])
 ```

@@ -14,11 +14,12 @@ Drop this directory into ~/.hermes/plugins/ and ensure a .env file is present
 
 Measurements written
 --------------------
-  hermes_session      – session start / end lifecycle
+  hermes_session      – session start / end / reset lifecycle
   hermes_llm_turn     – per-turn user prompt and final assistant response
   hermes_api_request  – individual provider API attempts with timing & tokens
   hermes_tool_call    – tool call start / end with args, result, and status
   hermes_subagent     – delegated child-agent start / stop events
+  hermes_approval     – dangerous-command approval requests / responses
 """
 
 import logging
@@ -63,6 +64,11 @@ def on_session_start(**kwargs):
 
 def on_session_end(**kwargs):
     _safe(_get_writer().write_session_end, **kwargs)
+
+
+def on_session_reset(**kwargs):
+    """Fires when the CLI/gateway moves from an old session identity to a new one."""
+    _safe(_get_writer().write_session_reset, **kwargs)
 
 
 def on_pre_llm_call(**kwargs):
@@ -130,6 +136,16 @@ def on_subagent_stop(**kwargs):
     _safe(_get_writer().write_subagent_stop, **kwargs)
 
 
+def on_pre_approval_request(**kwargs):
+    """Fires before a dangerous-command approval request is shown or sent."""
+    _safe(_get_writer().write_approval_request, **kwargs)
+
+
+def on_post_approval_response(**kwargs):
+    """Fires after the user responds to an approval request or it times out."""
+    _safe(_get_writer().write_approval_response, **kwargs)
+
+
 def on_session_finalize(**kwargs):
     """Flush and close the InfluxDB write client when the session tears down."""
     global _writer
@@ -164,6 +180,7 @@ def register(ctx):
     ctx.register_hook("on_session_start", on_session_start)
     ctx.register_hook("on_session_end", on_session_end)
     ctx.register_hook("on_session_finalize", on_session_finalize)
+    ctx.register_hook("on_session_reset", on_session_reset)
 
     ctx.register_hook("pre_llm_call", on_pre_llm_call)
     ctx.register_hook("post_llm_call", on_post_llm_call)
@@ -177,6 +194,9 @@ def register(ctx):
 
     ctx.register_hook("subagent_start", on_subagent_start)
     ctx.register_hook("subagent_stop", on_subagent_stop)
+
+    ctx.register_hook("pre_approval_request", on_pre_approval_request)
+    ctx.register_hook("post_approval_response", on_post_approval_response)
 
     logger.info(
         "hermes-logger registered — writing to %s/%s",
