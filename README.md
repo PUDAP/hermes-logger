@@ -19,8 +19,10 @@ All measurements share common tag fields where applicable: `session_id`, `task_i
 
 ### 1. Install dependencies
 
+Requires Python 3.10 or newer with `pip` available.
+
 ```bash
-uv sync
+pip install -r requirements.txt
 ```
 
 ### 2. Configure credentials
