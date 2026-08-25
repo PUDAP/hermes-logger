@@ -8,7 +8,7 @@ A [Hermes observer plugin](https://github.com/NousResearch/hermes-agent/tree/mai
 |---|---|
 | `hermes_session` | Session start / end / reset lifecycle |
 | `hermes_llm_turn` | Per-turn **user prompt** (`turn_start`) and **final agent response** (`turn_end`) |
-| `hermes_api_request` | Individual provider API attempts — timing, token usage, sanitized **request & response payloads** (LLM reasoning context) |
+| `hermes_api_request` | Individual provider API attempts — timing, token usage, sanitized **request & response payloads**, extracted **reasoning** text |
 | `hermes_tool_call` | Tool call start / end — name, **args**, **result**, duration, status |
 | `hermes_subagent` | Delegated child-agent start / stop with goal and summary |
 | `hermes_approval` | Dangerous-command approval requests and the user's response |
@@ -48,7 +48,7 @@ Optional tuning variables:
 | `AGENT_ID` | _(unset)_ | Identifier for the machine/agent running this plugin; added as the `agent_id` tag on every measurement when set |
 | `INFLUXDB_BATCH_SIZE` | `500` | Points buffered before a forced flush |
 | `INFLUXDB_FLUSH_INTERVAL_MS` | `10000` | Maximum ms between automatic flushes |
-| `HERMES_LOGGER_MAX_TEXT_BYTES` | `8192` | Truncate text fields longer than this (0 = unlimited) |
+| `HERMES_LOGGER_MAX_TEXT_BYTES` | `0` | Truncate text fields longer than this (0 = unlimited) |
 | `HERMES_LOGGER_LOG_LEVEL` | `INFO` | Plugin log verbosity |
 
 ### 3. Install the plugin
@@ -122,8 +122,9 @@ event="api_end"
   tags:   session_id, task_id, turn_id, api_request_id, model, provider, platform,
           api_mode, base_url, finish_reason
   fields: api_duration_ms, message_count, response_model, prompt_tokens,
-          completion_tokens, total_tokens, usage_payload, assistant_content_chars,
-          assistant_tool_call_count, response_payload
+          completion_tokens, total_tokens, reasoning_tokens, usage_payload,
+          assistant_content_chars, assistant_tool_call_count, response_payload,
+          reasoning
 
 event="api_error"
   tags:   session_id, task_id, turn_id, api_request_id, model, provider, platform,
@@ -132,7 +133,9 @@ event="api_error"
           error_message, request_payload
 ```
 
-`request_payload` / `response_payload` are the sanitized JSON payloads Hermes builds for the provider request/response (includes reasoning/thinking blocks). `usage_payload` is the full raw `usage` object as JSON, in addition to the three normalized numeric token fields.
+`request_payload` / `response_payload` are the sanitized JSON payloads Hermes builds for the provider request/response. `reasoning` is the extracted chain-of-thought text from `assistant_message` (OpenAI `reasoning`, DeepSeek/Qwen `reasoning_content`, OpenRouter `reasoning_details`). Encrypted/redacted thinking blocks are omitted. `usage_payload` is the full raw `usage` object as JSON, in addition to the normalized numeric token fields (`prompt_tokens`, `completion_tokens`, `total_tokens`, `reasoning_tokens`).
+
+Reasoning text is subject to `HERMES_LOGGER_MAX_TEXT_BYTES` like other text fields. The default is `0` (unlimited).
 
 ### `hermes_tool_call`
 
@@ -208,6 +211,14 @@ from(bucket: "hermes-logs")
   |> filter(fn: (r) => r._measurement == "hermes_api_request" and r._field == "total_tokens")
   |> group(columns: ["session_id", "turn_id"])
   |> sum()
+```
+
+**Reasoning traces:**
+```flux
+from(bucket: "hermes-logs")
+  |> range(start: -1h)
+  |> filter(fn: (r) => r._measurement == "hermes_api_request" and r._field == "reasoning" and r.event == "api_end")
+  |> filter(fn: (r) => r._value != "")
 ```
 
 **Failed tool calls:**

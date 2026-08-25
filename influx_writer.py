@@ -20,7 +20,7 @@ load_dotenv()
 
 logger = logging.getLogger("hermes_logger.influx_writer")
 
-_MAX_TEXT_BYTES = int(os.getenv("HERMES_LOGGER_MAX_TEXT_BYTES", "8192"))
+_MAX_TEXT_BYTES = int(os.getenv("HERMES_LOGGER_MAX_TEXT_BYTES", "0"))
 _AGENT_ID = os.getenv("AGENT_ID", "unset")
 
 
@@ -43,6 +43,84 @@ def _json_field(value: Any) -> str:
         return _truncate(json.dumps(value, ensure_ascii=False, default=str))
     except Exception:
         return _truncate(str(value))
+
+
+# Provider field names for chain-of-thought. OpenAI-style `reasoning`,
+# DeepSeek/Qwen/LM Studio `reasoning_content`, OpenRouter `reasoning_details`.
+_REASONING_FIELDS = ("reasoning", "reasoning_content", "reasoning_details")
+_REASONING_TEXT_KEYS = (
+    "text",
+    "summary",
+    "thinking",
+    "content",
+    "reasoning",
+    "reasoning_content",
+)
+_ENCRYPTED_REASONING_TYPES = frozenset(
+    {"reasoning.encrypted", "encrypted", "redacted_thinking"}
+)
+
+
+def _get_field(obj: Any, name: str) -> Any:
+    """Read ``name`` from a dict or object; return None when missing."""
+    if obj is None:
+        return None
+    if isinstance(obj, dict):
+        return obj.get(name)
+    return getattr(obj, name, None)
+
+
+def _flatten_reasoning_value(value: Any) -> str:
+    """Pull plain-text CoT out of provider reasoning shapes."""
+    if value is None or isinstance(value, bool):
+        return ""
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace").strip()
+    if isinstance(value, (int, float)):
+        return ""
+    if isinstance(value, dict):
+        dtype = str(value.get("type") or "").strip().lower()
+        if dtype in _ENCRYPTED_REASONING_TYPES:
+            return ""
+        if value.get("encrypted") or value.get("encrypted_content"):
+            return ""
+        parts: list[str] = []
+        seen: set[str] = set()
+        for key in _REASONING_TEXT_KEYS:
+            part = _flatten_reasoning_value(value.get(key))
+            if part and part not in seen:
+                seen.add(part)
+                parts.append(part)
+        return "\n".join(parts)
+    if isinstance(value, (list, tuple)):
+        parts = [_flatten_reasoning_value(item) for item in value]
+        return "\n".join(part for part in parts if part)
+    return str(value).strip()
+
+
+def _extract_reasoning(assistant_message: Any, response: Any = None) -> str:
+    """First non-empty reasoning text from the hook payload.
+
+    Prefers the raw ``assistant_message`` (dict or NormalizedResponse), then
+    the sanitized ``response`` envelope. Within each source, field order
+    matches the Langfuse plugin: ``reasoning``, ``reasoning_content``,
+    ``reasoning_details``.
+    """
+    for source in (assistant_message, response):
+        if source is None:
+            continue
+        provider_data = _get_field(source, "provider_data")
+        message = _get_field(source, "message")
+        for candidate in (source, provider_data, message):
+            if candidate is None:
+                continue
+            for field in _REASONING_FIELDS:
+                text = _flatten_reasoning_value(_get_field(candidate, field))
+                if text:
+                    return text
+    return ""
 
 
 def _now_ns() -> int:
@@ -243,10 +321,14 @@ class InfluxWriter:
             "prompt_tokens": int(usage.get("prompt_tokens") or usage.get("input_tokens") or 0),
             "completion_tokens": int(usage.get("completion_tokens") or usage.get("output_tokens") or 0),
             "total_tokens": int(usage.get("total_tokens") or 0),
+            "reasoning_tokens": int(usage.get("reasoning_tokens") or 0),
             "usage_payload": _json_field(usage),
             "assistant_content_chars": int(kw.get("assistant_content_chars") or 0),
             "assistant_tool_call_count": int(kw.get("assistant_tool_call_count") or 0),
             "response_payload": _json_field(kw.get("response")),
+            "reasoning": _truncate(
+                _extract_reasoning(kw.get("assistant_message"), kw.get("response"))
+            ),
         }
         ts = kw.get("ended_at") or kw.get("started_at")
         ts_ns = int(ts * 1e9) if ts else _now_ns()

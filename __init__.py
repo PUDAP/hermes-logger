@@ -3,7 +3,7 @@ hermes-logger: Hermes observer plugin for InfluxDB telemetry.
 
 Registers read-only observer hooks per the hermes.observer.v1 contract and
 writes structured points to InfluxDB for every user prompt, LLM API request
-(including reasoning payloads), tool call, and agent response.
+(including extracted reasoning text), tool call, and agent response.
 
 Registration
 ------------
@@ -16,7 +16,7 @@ Measurements written
 --------------------
   hermes_session      – session start / end / reset lifecycle
   hermes_llm_turn     – per-turn user prompt and final assistant response
-  hermes_api_request  – individual provider API attempts with timing & tokens
+  hermes_api_request  – individual provider API attempts with timing, tokens, and reasoning
   hermes_tool_call    – tool call start / end with args, result, and status
   hermes_subagent     – delegated child-agent start / stop events
   hermes_approval     – dangerous-command approval requests / responses
@@ -99,8 +99,8 @@ def on_pre_api_request(**kwargs):
 def on_post_api_request(**kwargs):
     """
     Fires after a successful provider response.
-    Captures timing, token usage, finish reason, and the sanitized response
-    payload (which includes assistant content and any reasoning/thinking blocks).
+    Captures timing, token usage, finish reason, the sanitized response
+    payload, and extracted reasoning/thinking text from assistant_message.
     """
     _safe(_get_writer().write_api_request_end, **kwargs)
 
