@@ -13,7 +13,6 @@ from typing import Any, cast
 
 from dotenv import load_dotenv
 from influxdb_client import InfluxDBClient, WriteOptions
-from influxdb_client.client.write_api import ASYNCHRONOUS
 from influxdb_client.domain.write_precision import WritePrecision
 
 load_dotenv()
@@ -155,7 +154,6 @@ class InfluxWriter:
             write_options=WriteOptions(
                 batch_size=batch_size,
                 flush_interval=flush_interval,
-                write_type=ASYNCHRONOUS,
             )
         )
         logger.info("InfluxWriter connected to %s (database=%s)", url, self.database)
@@ -172,8 +170,9 @@ class InfluxWriter:
                 record=record,
                 write_precision=cast(WritePrecision, WritePrecision.NS),
             )
-        except Exception:
-            logger.exception("Failed to write InfluxDB point: %s", record)
+        except Exception as exc:
+            # Records and exception messages can both contain captured secrets.
+            logger.error("Failed to write InfluxDB point (%s)", type(exc).__name__)
 
     @staticmethod
     def _point(measurement: str, tags: dict, fields: dict, ts_ns: int) -> dict:

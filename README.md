@@ -186,6 +186,17 @@ event="approval_response"
 
 `choice` reflects how the user resolved the prompt: `once`, `session`, `always`, `deny`, or `timeout`.
 
+## Development tests
+
+```bash
+python -m pip install -r requirements-dev.txt
+PYTHON_DOTENV_DISABLED=1 python -m pytest -q tests
+```
+
+Tests use the real InfluxDB client SDK against a temporary loopback HTTP server;
+no database or deployment credentials are needed. They cover batch-size and
+flush-interval delivery, shutdown flushing, and payload-safe write-error logging.
+
 ## Querying examples (Flux)
 
 **All user prompts in the last hour:**
